@@ -1,0 +1,17 @@
+#!/bin/bash
+# Open URLs on the host via xdg-desktop-portal over the mounted D-Bus socket.
+# This lets CLI OAuth flows (claude auth, gh auth, etc.) open the host browser
+# from inside the container without a browser installed here.
+url="${1:-}"
+[[ -z "$url" ]] && { echo "xdg-open: missing argument" >&2; exit 1; }
+
+if [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && command -v gdbus &>/dev/null; then
+    gdbus call --session \
+        --dest org.freedesktop.portal.Desktop \
+        --object-path /org/freedesktop/portal/desktop \
+        --method org.freedesktop.portal.OpenURI.OpenURI \
+        "" "$url" "{}" &>/dev/null && exit 0
+fi
+
+printf '\nxdg-open: cannot reach host browser. Open this URL manually:\n  %s\n\n' "$url" >&2
+exit 0

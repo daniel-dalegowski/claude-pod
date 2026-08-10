@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+# claude-pod — Ephemeral Podman sandbox for a single project directory.
+#
+# Usage:
+#   claude-pod [--path DIR]           Start/attach interactive shell
+#   claude-pod -- COMMAND [ARGS...]   Run one-off command, then return
+#   claude-pod --down | --stop        Stop and remove this project's container
+#   claude-pod --list                 List all running claude-pod containers
+#   claude-pod --prune                Force-stop all claude-pod containers
+#   claude-pod --rebuild              Rebuild the base sandbox image
+#   claude-pod --help                 Show this help
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+IMAGE_NAME="claude-pod-sandbox"
+CONTAINER_PREFIX="claude-pod"
+APT_CACHE_VOLUME="claude-pod-apt-cache"
+
+# Containerfile lives next to this script (follow symlinks to find the real dir)
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+usage() {
+    cat <<'EOF'
+Usage: claude-pod [OPTIONS] [-- COMMAND [ARGS...]]
+
+Start or attach to an ephemeral Podman sandbox for the current project.
+The container lives for the duration of a working session and is not torn
+down when a shell closes — only 'claude-pod --down' ends it.
+
+Every container gets:
+  - Host networking: any port the container binds is reachable on the host
+  - Display passthrough: Wayland (preferred) or X11 fallback, plus /dev/dri
+  - D-Bus passthrough: xdg-open inside the container opens the host browser
+  - ANTHROPIC_API_KEY forwarded if set on the host
+
+OPTIONS:
+  --path DIR            Use DIR as the project root  (default: current directory)
+  --down, --stop        Stop and remove this project's container
+  --list                List all running claude-pod containers
+  --prune               Force-stop and remove all claude-pod containers
+  --rebuild             Rebuild the base sandbox image
+  -h, --help            Show this help
+
+TRAILING ARGS:
+  -- COMMAND [ARGS...]  Run COMMAND in the container instead of opening a shell.
+                        The container is not stopped afterward.
+
+EXAMPLES:
+  claude-pod                               # interactive shell in /workspace
+  claude-pod --path ~/src/myproject        # explicit project directory
+  claude-pod --down                        # end the session
+  claude-pod -- claude --dangerously-skip-permissions -p "fix the bug"
+EOF
+}
+
+# Derive a stable, collision-resistant container name from an absolute path.
+container_name_for() {
+    local dir="$1"
+    local hash
+    hash="$(printf '%s' "$dir" | sha256sum | cut -c1-16)"
+    echo "${CONTAINER_PREFIX}-${hash}"
+}
+
+is_running() {
+    local name="$1"
+    # podman inspect is more reliable than --filter name= (Podman's regex anchoring
+    # behaviour varies across versions and the filter can silently not match).
+    podman inspect --format '{{.State.Running}}' "$name" 2>/dev/null | grep -q '^true$'
+}
+
+require_image() {
+    if ! podman image exists "$IMAGE_NAME" 2>/dev/null; then
+        echo "Image '${IMAGE_NAME}' not found. Building it now..."
+        rebuild_image
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Subcommands
+# ---------------------------------------------------------------------------
+
+rebuild_image() {
+    local containerfile="${SCRIPT_DIR}/Containerfile"
+    if [[ ! -f "$containerfile" ]]; then
+        echo "Error: Containerfile not found at ${containerfile}" >&2
+        echo "Ensure the Containerfile is in the same directory as this script." >&2
+        exit 1
+    fi
+    echo "Building ${IMAGE_NAME} from ${containerfile} ..."
+    podman build \
+        --build-arg "USER_UID=$(id -u)" \
+        --build-arg "USER_GID=$(id -g)" \
+        -t "$IMAGE_NAME" \
+        -f "$containerfile" \
+        "$SCRIPT_DIR"
+    echo "Image '${IMAGE_NAME}' built successfully."
+}
+
+cmd_list() {
+    local lines
+    lines="$(podman ps --filter "name=${CONTAINER_PREFIX}-" \
+        --format "{{.Names}}\t{{.Status}}\t{{index .Labels \"claude-pod.project\"}}" 2>/dev/null || true)"
+    if [[ -z "$lines" ]]; then
+        echo "No claude-pod containers are running."
+        return
+    fi
+    printf "%-36s  %-20s  %s\n" "NAME" "STATUS" "PROJECT"
+    while IFS=$'\t' read -r name status project; do
+        printf "%-36s  %-20s  %s\n" "$name" "$status" "$project"
+    done <<< "$lines"
+}
+
+cmd_prune() {
+    local ids
+    ids="$(podman ps -q --filter "name=${CONTAINER_PREFIX}-" 2>/dev/null || true)"
+    if [[ -z "$ids" ]]; then
+        echo "No claude-pod containers running."
+        return
+    fi
+    echo "Stopping all claude-pod containers..."
+    echo "$ids" | xargs podman stop
+    echo "Done. (--rm at creation time removes them automatically once stopped.)"
+}
+
+cmd_down() {
+    local container_name="$1"
+    if is_running "$container_name"; then
+        echo "Stopping container ${container_name} ..."
+        podman stop "$container_name"
+        echo "Container stopped and removed."
+    else
+        echo "No running container found for this project (name: ${container_name})."
+    fi
+}
+
+# Start a new detached container for the project.
+start_container() {
+    local container_name="$1"
+    local project_dir="$2"
+
+    local xdg_rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+    local -a args=(
+        run
+        --detach
+        --name "$container_name"
+        --rm
+        --userns=keep-id
+        --network=host
+        --workdir /workspace
+        -v "${project_dir}:/workspace:z"
+        -v "${APT_CACHE_VOLUME}:/var/cache/apt/archives:z"
+        --label "claude-pod.project=${project_dir}"
+    )
+
+    # Forward API key if set on the host; absence is not an error.
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        args+=(-e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}")
+    fi
+
+    # Display passthrough — Wayland preferred, X11 fallback.
+    # Both can coexist (some apps fall back to X11 even when Wayland is active).
+    if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+        local wayland_sock="${xdg_rt}/${WAYLAND_DISPLAY}"
+        if [[ -S "$wayland_sock" ]]; then
+            args+=(
+                -v "${wayland_sock}:${wayland_sock}"
+                -e "WAYLAND_DISPLAY=${WAYLAND_DISPLAY}"
+                -e "XDG_RUNTIME_DIR=${xdg_rt}"
+            )
+        fi
+    fi
+    if [[ -n "${DISPLAY:-}" ]]; then
+        xhost +local: 2>/dev/null || true
+        args+=(
+            -v "/tmp/.X11-unix:/tmp/.X11-unix"
+            -e "DISPLAY=${DISPLAY}"
+        )
+        # X11 auth cookie — without this, connections to XWayland are rejected
+        local xauth_src="${XAUTHORITY:-${HOME}/.Xauthority}"
+        if [[ -f "$xauth_src" ]]; then
+            args+=(
+                -v "${xauth_src}:/home/sandbox/.Xauthority:ro"
+                -e "XAUTHORITY=/home/sandbox/.Xauthority"
+            )
+        fi
+    fi
+
+    # D-Bus session bus — lets xdg-open (and other tools) open URLs in the
+    # host browser, which is essential for CLI OAuth flows (claude auth, etc.).
+    local dbus_sock="${xdg_rt}/bus"
+    if [[ -S "$dbus_sock" ]]; then
+        args+=(
+            -v "${dbus_sock}:${dbus_sock}"
+            -e "DBUS_SESSION_BUS_ADDRESS=unix:path=${dbus_sock}"
+        )
+    fi
+
+    # Audio passthrough — PulseAudio or PipeWire-PulseAudio (same socket path).
+    # If the socket exists, mount it and point SDL/apps at it so audio works.
+    # If not, set SDL_AUDIODRIVER=dummy so SDL doesn't crash looking for /dev/dsp.
+    local pulse_sock="${xdg_rt}/pulse/native"
+    if [[ -S "$pulse_sock" ]]; then
+        args+=(
+            -v "${pulse_sock}:${pulse_sock}"
+            -e "PULSE_SERVER=unix:${pulse_sock}"
+        )
+    else
+        args+=(-e "SDL_AUDIODRIVER=dummy")
+    fi
+
+    # GPU passthrough for hardware-accelerated display and compute.
+    if [[ -e /dev/dri ]]; then
+        args+=(--device /dev/dri)
+    fi
+
+    args+=("$IMAGE_NAME")
+
+    echo "Starting new container for ${project_dir} ..."
+    podman "${args[@]}"
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+PROJECT_DIR=""
+DO_DOWN=false
+DO_LIST=false
+DO_PRUNE=false
+DO_REBUILD=false
+TRAILING_CMD=()
+HAS_TRAILING=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage; exit 0 ;;
+        --rebuild)
+            DO_REBUILD=true; shift ;;
+        --list)
+            DO_LIST=true; shift ;;
+        --prune)
+            DO_PRUNE=true; shift ;;
+        --down|--stop)
+            DO_DOWN=true; shift ;;
+        --path)
+            shift
+            [[ $# -eq 0 ]] && { echo "Error: --path requires an argument." >&2; exit 1; }
+            PROJECT_DIR="$1"; shift
+            ;;
+        --)
+            shift
+            TRAILING_CMD=("$@")
+            HAS_TRAILING=true
+            break
+            ;;
+        -*)
+            echo "Error: unknown option: $1" >&2
+            usage; exit 1 ;;
+        *)
+            if [[ -z "$PROJECT_DIR" ]]; then
+                PROJECT_DIR="$1"; shift
+            else
+                echo "Error: unexpected argument: $1" >&2
+                exit 1
+            fi
+            ;;
+    esac
+done
+
+# ---------------------------------------------------------------------------
+# Dispatch single-action subcommands that don't need a project directory
+# ---------------------------------------------------------------------------
+
+if $DO_REBUILD; then rebuild_image; exit 0; fi
+if $DO_LIST;    then cmd_list;      exit 0; fi
+if $DO_PRUNE;   then cmd_prune;     exit 0; fi
+
+# ---------------------------------------------------------------------------
+# Resolve project directory (required for all remaining commands)
+# ---------------------------------------------------------------------------
+
+if [[ -z "$PROJECT_DIR" ]]; then
+    PROJECT_DIR="$(pwd)"
+fi
+PROJECT_DIR="$(realpath "$PROJECT_DIR")"
+
+if [[ ! -d "$PROJECT_DIR" ]]; then
+    echo "Error: project directory does not exist: ${PROJECT_DIR}" >&2
+    exit 1
+fi
+
+CONTAINER_NAME="$(container_name_for "$PROJECT_DIR")"
+
+# ---------------------------------------------------------------------------
+# --down: stop this project's container
+# ---------------------------------------------------------------------------
+
+if $DO_DOWN; then
+    cmd_down "$CONTAINER_NAME"
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Start or attach
+# ---------------------------------------------------------------------------
+
+require_image
+
+if ! is_running "$CONTAINER_NAME"; then
+    start_container "$CONTAINER_NAME" "$PROJECT_DIR"
+else
+    echo "Attaching to existing container for ${PROJECT_DIR} ..."
+fi
+
+# ---------------------------------------------------------------------------
+# Exec: one-off command or interactive shell
+# ---------------------------------------------------------------------------
+
+if $HAS_TRAILING; then
+    if [[ ${#TRAILING_CMD[@]} -eq 0 ]]; then
+        echo "Error: no command specified after '--'." >&2
+        exit 1
+    fi
+    exec podman exec -it --workdir /workspace "$CONTAINER_NAME" "${TRAILING_CMD[@]}"
+else
+    exec podman exec -it --workdir /workspace "$CONTAINER_NAME" bash
+fi
