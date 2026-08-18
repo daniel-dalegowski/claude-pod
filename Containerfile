@@ -77,6 +77,18 @@ ENV SDL_VIDEODRIVER=x11
 RUN mkdir -p /home/sandbox/.claude
 COPY container-claude.md /home/sandbox/.claude/CLAUDE.md
 
+# Pre-configure Claude Code for the container: allow all tools and enable
+# dangerously-skip-permissions by default so 'cla' starts without consent prompts.
+RUN printf '%s\n' \
+    '{' \
+    '  "dangerouslySkipPermissions": true,' \
+    '  "workspaceTrust": false,' \
+    '  "permissions": {' \
+    '    "allow": ["Bash(*)", "Read(*)", "Edit(*)", "Write(*)", "WebFetch(*)", "WebSearch(*)", "NotebookEdit(*)", "Agent(*)"]' \
+    '  }' \
+    '}' \
+    > /home/sandbox/.claude/settings.json
+
 # npm global installs by sandbox go to ~/.local so 'npm install -g' works without sudo.
 # NPM_CONFIG_PREFIX must be set AFTER the root-level 'npm install -g @anthropic-ai/claude-code'
 # above, otherwise that install would also land in /home/sandbox/.local.

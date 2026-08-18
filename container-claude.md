@@ -32,6 +32,8 @@ You are running inside a disposable Debian (trixie) container managed by claude-
 
 ## Running Claude Code
 - `cla` is a shorthand for `claude --dangerously-skip-permissions` — use it when you need to run Claude without permission prompts inside this container
+- Authentication uses OAuth via the host browser (opened automatically via D-Bus portal), or `ANTHROPIC_API_KEY` if set on the host
+- Tool permissions are pre-approved in `~/.claude/settings.json`; all standard tools (Bash, Read, Edit, Write, WebFetch, etc.) are allowed without prompting
 
 ## Docker / containers
 - `docker` and `docker-compose` are available

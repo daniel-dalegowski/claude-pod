@@ -5,12 +5,21 @@
 url="${1:-}"
 [[ -z "$url" ]] && { echo "xdg-open: missing argument" >&2; exit 1; }
 
-if [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && command -v gdbus &>/dev/null; then
-    gdbus call --session \
-        --dest org.freedesktop.portal.Desktop \
-        --object-path /org/freedesktop/portal/desktop \
-        --method org.freedesktop.portal.OpenURI.OpenURI \
-        "" "$url" "{}" &>/dev/null && exit 0
+if [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
+    # gio open uses GIO's portal integration automatically and is the simplest path.
+    if command -v gio &>/dev/null && gio open "$url" 2>/dev/null; then
+        exit 0
+    fi
+
+    # Fall back to explicit portal call. @a{sv} {} gives gdbus the correct type
+    # for the empty options dict (plain {} is ambiguous and may fail to parse).
+    if command -v gdbus &>/dev/null; then
+        gdbus call --session \
+            --dest org.freedesktop.portal.Desktop \
+            --object-path /org/freedesktop/portal/desktop \
+            --method org.freedesktop.portal.OpenURI.OpenURI \
+            "" "$url" "@a{sv} {}" 2>/dev/null && exit 0
+    fi
 fi
 
 printf '\nxdg-open: cannot reach host browser. Open this URL manually:\n  %s\n\n' "$url" >&2
