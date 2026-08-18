@@ -25,7 +25,7 @@
 
           datadir="$out/share/claude-pod"
           install -Dm644 Containerfile       "$datadir/Containerfile"
-          install -Dm755 container-xdg-open  "$datadir/container-xdg-open"
+          install -Dm644 container-xdg-open  "$datadir/container-xdg-open"
           install -Dm644 container-claude.md "$datadir/container-claude.md"
 
           install -Dm755 claude-pod "$out/bin/claude-pod"
