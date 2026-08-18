@@ -10,6 +10,14 @@ You are running inside a disposable Debian (trixie) container managed by claude-
 ## Node.js / npm
 - `npm install -g <pkg>` installs to `~/.local/bin` — no sudo needed, already on PATH
 
+## Python / pip
+- `pip install <pkg>` installs to `/usr/local` — no sudo, no `--user`, no virtualenv required
+- `python3 -m venv` is available if a project requires an isolated environment
+
+## Other installers
+- `/usr/local` is owned by the sandbox user, so any tool that installs there works without sudo: `gem install`, `make install`, `cmake --install .`, `cargo install --root /usr/local`, curl-based install scripts, etc.
+- For tools that install to `~/.local` or `~/.<tool>` by default (Rust/cargo, Go, etc.) those paths work as-is
+
 ## Filesystem
 - `/workspace` is the project directory, bind-mounted from the host — changes here persist across container restarts
 - Everything outside `/workspace` is ephemeral — gone when the container stops

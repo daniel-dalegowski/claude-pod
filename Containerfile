@@ -23,7 +23,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 \
     docker.io \
     docker-compose \
+    python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
+
+# Allow pip to install to /usr/local without requiring a virtualenv.
+# Debian's PEP 668 "externally managed" guard adds no value in a disposable container.
+RUN printf '[global]\nbreak-system-packages = true\n' > /etc/pip.conf
 
 # Install Node.js LTS via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
@@ -106,6 +112,11 @@ RUN printf '%s\n' \
 # calls iptables/nftables rules and run the container with --cap-add NET_ADMIN
 # --cap-add NET_RAW. Not implemented in v1 — unrestricted egress is acceptable
 # for personal use.
+
+# /usr/local is writable by sandbox so non-apt installers (pip, gem, make install,
+# cmake --install, curl-based scripts) can drop files there without sudo.
+# Placed after all root-level installs to /usr/local above (claude, cla, etc.).
+RUN chown -R "${USER_UID}:${USER_GID}" /usr/local
 
 WORKDIR /workspace
 USER sandbox

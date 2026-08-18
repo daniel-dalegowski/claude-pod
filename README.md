@@ -31,7 +31,7 @@ Use this for convenience and accidental-damage prevention when working with a tr
 - Debian (trixie) base — standard FHS, so a project's own install docs just work
 - `bash`, `git`, `curl`, `build-essential`, Node.js LTS, Claude Code (`claude`)
 - `cla` alias for `claude --dangerously-skip-permissions`
-- Passwordless `sudo` scoped to `apt-get`/`apt`/`dpkg` only
+- Passwordless `sudo` scoped to `apt-get`/`apt`/`dpkg` only; `/usr/local` is owned by the sandbox user so `pip install`, `gem install`, `make install`, curl-based installers, etc. work without sudo
 - Wayland + X11/XWayland passthrough, GPU (`/dev/dri`), audio (PulseAudio/PipeWire), D-Bus
 - `xdg-open` wired through D-Bus so OAuth flows open in your host browser
 - Host networking allowing any port bound inside the container to be immediately reachable on the host at the same port number with no explicit publish step
