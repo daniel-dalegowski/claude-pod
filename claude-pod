@@ -217,6 +217,23 @@ start_container() {
         args+=(-e "SDL_AUDIODRIVER=dummy")
     fi
 
+    # Docker socket passthrough — lets docker CLI (and docker compose) inside the
+    # container build images and run containers via the host daemon.
+    # Prefers the rootless Podman user socket; falls back to the system Docker socket
+    # (present when virtualisation.docker.enable = true and user is in the docker group).
+    # The --group-add keep-groups flag is needed for the system socket so the container
+    # process inherits the host docker group GID and can open the socket.
+    local podman_sock="${xdg_rt}/podman/podman.sock"
+    local docker_sock="/var/run/docker.sock"
+    if [[ -S "$podman_sock" ]]; then
+        args+=(-v "${podman_sock}:/var/run/docker.sock")
+    elif [[ -S "$docker_sock" ]]; then
+        args+=(
+            -v "${docker_sock}:/var/run/docker.sock"
+            --group-add keep-groups
+        )
+    fi
+
     # GPU passthrough for hardware-accelerated display and compute.
     if [[ -e /dev/dri ]]; then
         args+=(--device /dev/dri)

@@ -25,6 +25,12 @@ You are running inside a disposable Debian (trixie) container managed by claude-
 ## Running Claude Code
 - `cla` is a shorthand for `claude --dangerously-skip-permissions` — use it when you need to run Claude without permission prompts inside this container
 
+## Docker / containers
+- `docker` and `docker-compose` are available
+- When the host Podman socket is active, they connect to it via `/var/run/docker.sock` — Podman is Docker API-compatible so `docker build`, `docker run`, `docker compose up`, etc. all work
+- Containers you start this way are siblings on the host Podman, not nested inside this container — they bind to the host network namespace the same way this container does
+- If `/var/run/docker.sock` is absent, the host socket was not running when this container started; the user can run `systemctl --user start podman.socket` and then restart the container
+
 ## Display and browser
 - Wayland and X11 are passed through from the host display
 - GUI applications you launch will appear on the host desktop via XWayland

@@ -4,6 +4,28 @@ An ephemeral [Podman](https://podman.io/) sandbox that drops you into a disposab
 
 The container is long-lived for the duration of a working session--closing a shell does not stop it. Multiple terminals can attach to the same container simultaneously. Only `claude-pod --down` ends the session.
 
+## Prior work
+
+Several projects solve the same basic problem and may be more effective in various respects, depending on use case.
+
+- [trekhleb/claude-pod](https://github.com/trekhleb/claude-pod) — Docker-based, same concept, broader compatibility
+- [EvanCarroll/claude-podman](https://github.com/EvanCarroll/claude-podman) — rootless Podman, simpler scope
+
+This project differs in that it targets NixOS specifically (distributed as a flake), adds GUI passthrough (Wayland/X11, GPU, audio), D-Bus integration for host-browser OAuth flows, and persistent session semantics.
+
+## Security scope and limitations
+
+This sandbox limits **filesystem access** — the container sees only the mounted project directory, not your home directory, SSH keys, or other projects. That is its primary purpose.
+
+It does **not** protect against a determined adversary. Specifically:
+
+- **Unrestricted network egress** — code running inside can reach the internet freely. A malicious prompt or compromised dependency could exfiltrate data or make outbound connections.
+- **Host networking** — ports bound inside are immediately reachable on the host; there is no network namespace isolation.
+- **Shared kernel** — container escapes via kernel exploits are theoretically possible; this is not a VM.
+- **D-Bus and display passthrough** — GUI and D-Bus access are forwarded from the host, which widens the attack surface.
+
+Use this for convenience and accidental-damage prevention when working with a trusted model on your own code. Do not rely on it as a security boundary against adversarial inputs.
+
 ## What's inside the initial container
 
 - Debian (trixie) base — standard FHS, so a project's own install docs just work
@@ -13,6 +35,7 @@ The container is long-lived for the duration of a working session--closing a she
 - Wayland + X11/XWayland passthrough, GPU (`/dev/dri`), audio (PulseAudio/PipeWire), D-Bus
 - `xdg-open` wired through D-Bus so OAuth flows open in your host browser
 - Host networking allowing any port bound inside the container to be immediately reachable on the host at the same port number with no explicit publish step
+- `docker` and `docker-compose` — connects automatically to the host Docker or Podman socket when available; no flag needed (works out of the box with `virtualisation.docker.enable = true` on NixOS)
 - Persistent apt cache volume so packages aren't re-downloaded every session
 - `ANTHROPIC_API_KEY` forwarded from the host if set
 
