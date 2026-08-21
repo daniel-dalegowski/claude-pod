@@ -152,6 +152,7 @@ start_container() {
         run
         --detach
         --name "$container_name"
+        --hostname "claude-pod"
         --rm
         --userns=keep-id
         --network=host
