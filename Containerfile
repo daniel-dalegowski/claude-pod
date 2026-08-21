@@ -58,19 +58,9 @@ RUN (getent group "${USER_GID}" > /dev/null 2>&1 || groupadd -g "${USER_GID}" sa
 # of asking for a password the sandbox user doesn't have.
 RUN printf '%s\n' \
     'Defaults:sandbox !authenticate, passwd_tries=0' \
-    'sandbox ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dpkg, /usr/bin/dpkg-reconfigure, /usr/local/bin/install-ca-cert' \
+    'sandbox ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dpkg, /usr/bin/dpkg-reconfigure, /usr/sbin/update-ca-certificates' \
     > /etc/sudoers.d/sandbox-apt \
     && chmod 440 /etc/sudoers.d/sandbox-apt
-
-# Wrapper script so sandbox can install CA certificates without broad sudo access.
-RUN printf '%s\n' \
-    '#!/bin/bash' \
-    'set -euo pipefail' \
-    '[[ $# -eq 2 ]] || { echo "Usage: sudo install-ca-cert <src.pem> <name.crt>" >&2; exit 1; }' \
-    'cp "$1" "/usr/local/share/ca-certificates/$2"' \
-    'update-ca-certificates' \
-    > /usr/local/bin/install-ca-cert \
-    && chmod +x /usr/local/bin/install-ca-cert
 
 # xdg-open override: calls xdg-desktop-portal over the mounted D-Bus session so
 # CLI OAuth flows (claude auth, gh auth, etc.) open the host browser automatically.
