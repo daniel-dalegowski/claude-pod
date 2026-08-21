@@ -26,7 +26,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     tmux \
+    locales \
+    unzip \
+    tar \
+    wget \
     && rm -rf /var/lib/apt/lists/*
+
+RUN sed -i 's/^# *\(en_US.UTF-8\)/\1/' /etc/locale.gen && locale-gen
 
 # Allow pip to install to /usr/local without requiring a virtualenv.
 # Debian's PEP 668 "externally managed" guard adds no value in a disposable container.
@@ -74,6 +80,10 @@ ENV BROWSER=/usr/local/bin/xdg-open
 # Prevent Claude Code from auto-updating inside the container
 ENV DISABLE_AUTOUPDATER=1
 
+# UTF-8 locale so box-drawing characters and Unicode render correctly
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
 # SDL2 (and pygame) silently try the native Wayland backend first when
 # WAYLAND_DISPLAY is set, but the passthrough lacks xdg-shell so the window
 # never surfaces — no error, just invisible. Force X11 (XWayland) which works.
@@ -98,6 +108,7 @@ RUN printf '%s\n' \
 
 # tmux defaults: large scrollback and mouse support
 RUN printf '%s\n' \
+    'set -g default-terminal "tmux-256color"' \
     'set -g history-limit 100000' \
     'set -g mouse on' \
     > /home/sandbox/.tmux.conf
