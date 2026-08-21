@@ -25,11 +25,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     docker-compose \
     python3-pip \
     python3-venv \
+    tmux \
     && rm -rf /var/lib/apt/lists/*
 
 # Allow pip to install to /usr/local without requiring a virtualenv.
 # Debian's PEP 668 "externally managed" guard adds no value in a disposable container.
 RUN printf '[global]\nbreak-system-packages = true\n' > /etc/pip.conf
+
+# Install uv (fast Python package/project manager)
+RUN pip3 install uv
 
 # Install Node.js LTS via NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
@@ -37,7 +41,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code globally (available to all users via /usr/local/bin)
-RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @anthropic-ai/claude-code@2.1.237
 
 # Create the sandbox user.
 # UID 1000 is the most common first-user UID on Linux.
@@ -67,6 +71,9 @@ RUN chmod +x /usr/local/bin/xdg-open
 # BROWSER fallback for tools that exec $BROWSER directly instead of xdg-open
 ENV BROWSER=/usr/local/bin/xdg-open
 
+# Prevent Claude Code from auto-updating inside the container
+ENV DISABLE_AUTOUPDATER=1
+
 # SDL2 (and pygame) silently try the native Wayland backend first when
 # WAYLAND_DISPLAY is set, but the passthrough lacks xdg-shell so the window
 # never surfaces — no error, just invisible. Force X11 (XWayland) which works.
@@ -89,13 +96,19 @@ RUN printf '%s\n' \
     '}' \
     > /home/sandbox/.claude/settings.json
 
+# tmux defaults: large scrollback and mouse support
+RUN printf '%s\n' \
+    'set -g history-limit 100000' \
+    'set -g mouse on' \
+    > /home/sandbox/.tmux.conf
+
 # npm global installs by sandbox go to ~/.local so 'npm install -g' works without sudo.
 # NPM_CONFIG_PREFIX must be set AFTER the root-level 'npm install -g @anthropic-ai/claude-code'
 # above, otherwise that install would also land in /home/sandbox/.local.
 ENV NPM_CONFIG_PREFIX=/home/sandbox/.local
 ENV PATH=/home/sandbox/.local/bin:$PATH
 RUN mkdir -p /home/sandbox/.local/bin \
-    && chown -R "${USER_UID}:${USER_GID}" /home/sandbox/.local /home/sandbox/.claude
+    && chown -R "${USER_UID}:${USER_GID}" /home/sandbox/.local /home/sandbox/.claude /home/sandbox/.tmux.conf
 
 # Short alias for running Claude Code with --dangerously-skip-permissions.
 # A wrapper script (not a .bashrc alias) so it works in non-interactive shells too.
