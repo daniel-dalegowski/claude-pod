@@ -29,6 +29,7 @@ You are running inside a disposable Debian (trixie) container managed by claude-
 - Any server you start is immediately reachable at `localhost:<port>` on the host — no port mapping needed
 - Verified working: Vite dev server (and similar Node.js/web servers) are accessible in the host browser as soon as they bind
 - Full internet access is available
+- `/etc/resolv.conf` is a snapshot taken when the container was created, not a live view of the host's — if the host switches networks (wifi <-> mobile hotspot, VPN) while this container stays running, DNS lookups can start hanging/failing even though raw IP connectivity still works. Sudo cannot fix this (it's scoped to package management only). From the host, `claude-pod --fix-dns` copies the host's current resolv.conf into the container.
 
 ## Running Claude Code
 - `cla` is a shorthand for `claude --dangerously-skip-permissions` — use it when you need to run Claude without permission prompts inside this container

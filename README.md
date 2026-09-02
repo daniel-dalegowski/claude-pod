@@ -93,6 +93,12 @@ claude-pod --prune
 
 # Rebuild the base image (e.g. after Claude Code updates)
 claude-pod --rebuild
+
+# Refresh DNS inside a long-running container after switching networks
+# (wifi <-> mobile hotspot, VPN toggling, etc.) — containers use --network=host
+# but keep a snapshot of /etc/resolv.conf taken at creation time, so name
+# resolution can go stale even though raw connectivity still works.
+claude-pod --fix-dns
 ```
 
 Each project directory gets its own container, identified by a hash of the path. Running `claude-pod` a second time from a different terminal attaches a new shell to the same container, allowing for inspection of the coding agent's work..

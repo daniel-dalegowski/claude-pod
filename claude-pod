@@ -8,6 +8,7 @@
 #   claude-pod --list                 List all running claude-pod containers
 #   claude-pod --prune                Force-stop all claude-pod containers
 #   claude-pod --rebuild              Rebuild the base sandbox image
+#   claude-pod --fix-dns              Refresh /etc/resolv.conf from the host
 #   claude-pod --help                 Show this help
 
 set -euo pipefail
@@ -47,6 +48,11 @@ OPTIONS:
   --list                List all running claude-pod containers
   --prune               Force-stop and remove all claude-pod containers
   --rebuild             Rebuild the base sandbox image
+  --fix-dns             Refresh /etc/resolv.conf inside this project's
+                        container from the host's current one. Long-lived
+                        containers keep a snapshot of resolv.conf taken at
+                        creation time, which goes stale after switching
+                        networks (e.g. wifi <-> mobile hotspot).
   -h, --help            Show this help
 
 TRAILING ARGS:
@@ -139,6 +145,21 @@ cmd_down() {
     else
         echo "No running container found for this project (name: ${container_name})."
     fi
+}
+
+# Copy the host's current /etc/resolv.conf into the container. Uses --user
+# root on the podman-exec (a host-level privilege, not sudo inside the
+# container) so this works even though the sandbox user's sudo is scoped to
+# package management only.
+cmd_fix_dns() {
+    local container_name="$1"
+    if ! is_running "$container_name"; then
+        echo "No running container found for this project (name: ${container_name})." >&2
+        exit 1
+    fi
+    echo "Refreshing /etc/resolv.conf in ${container_name} from host ..."
+    podman exec -i --user root "$container_name" sh -c 'cat > /etc/resolv.conf' < /etc/resolv.conf
+    echo "Done."
 }
 
 # Start a new detached container for the project.
@@ -255,6 +276,7 @@ DO_DOWN=false
 DO_LIST=false
 DO_PRUNE=false
 DO_REBUILD=false
+DO_FIX_DNS=false
 TRAILING_CMD=()
 HAS_TRAILING=false
 
@@ -270,6 +292,8 @@ while [[ $# -gt 0 ]]; do
             DO_PRUNE=true; shift ;;
         --down|--stop)
             DO_DOWN=true; shift ;;
+        --fix-dns)
+            DO_FIX_DNS=true; shift ;;
         --path)
             shift
             [[ $# -eq 0 ]] && { echo "Error: --path requires an argument." >&2; exit 1; }
@@ -325,6 +349,11 @@ CONTAINER_NAME="$(container_name_for "$PROJECT_DIR")"
 
 if $DO_DOWN; then
     cmd_down "$CONTAINER_NAME"
+    exit 0
+fi
+
+if $DO_FIX_DNS; then
+    cmd_fix_dns "$CONTAINER_NAME"
     exit 0
 fi
 
