@@ -9,6 +9,7 @@
 #   claude-pod --prune                Force-stop all claude-pod containers
 #   claude-pod --rebuild              Rebuild the base sandbox image
 #   claude-pod --fix-dns              Refresh /etc/resolv.conf from the host
+#   claude-pod --version              Print the claude-pod version
 #   claude-pod --help                 Show this help
 
 set -euo pipefail
@@ -53,6 +54,7 @@ OPTIONS:
                         containers keep a snapshot of resolv.conf taken at
                         creation time, which goes stale after switching
                         networks (e.g. wifi <-> mobile hotspot).
+  --version             Print the claude-pod version
   -h, --help            Show this help
 
 TRAILING ARGS:
@@ -80,6 +82,16 @@ is_running() {
     # podman inspect is more reliable than --filter name= (Podman's regex anchoring
     # behaviour varies across versions and the filter can silently not match).
     podman inspect --format '{{.State.Running}}' "$name" 2>/dev/null | grep -q '^true$'
+}
+
+cmd_version() {
+    local version_file="${SCRIPT_DIR}/VERSION"
+    if [[ -f "$version_file" ]]; then
+        cat "$version_file"
+    else
+        echo "unknown (VERSION file not found at ${version_file})" >&2
+        exit 1
+    fi
 }
 
 require_image() {
@@ -284,6 +296,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)
             usage; exit 0 ;;
+        --version)
+            cmd_version; exit 0 ;;
         --rebuild)
             DO_REBUILD=true; shift ;;
         --list)

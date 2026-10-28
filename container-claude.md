@@ -49,3 +49,10 @@ You are running inside a disposable Debian (trixie) container managed by claude-
 - `xdg-open <url>` opens URLs in the host browser via D-Bus portal
 - For CLI OAuth flows (e.g. `claude`, `gh auth login`), the browser will open automatically on the host
 - **Screenshot tools (`scrot`, `xwd`, GNOME D-Bus screenshot API) do not work inside the container** — the Wayland compositor blocks cross-process X11 capture for security reasons. To verify a GUI app is working, ask the user to look at their screen directly.
+
+## Escalation
+- Two failed fixes on the same problem → stop and hand off to `debugger`. Don't try a third time yourself.
+- `debugger` says it's a design problem, or a subsystem keeps breaking → `architect`.
+- Before writing code for geometry, camera/projection math, coordinate transforms,
+  numerics, concurrency, or anything with subtle invariants → `architect` first, then implement from its spec.
+- When escalating, include: the symptom, what you tried, and the relevant file paths. Don't include your theory as fact.

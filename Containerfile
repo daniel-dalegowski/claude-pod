@@ -46,8 +46,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code globally (available to all users via /usr/local/bin)
-RUN npm install -g @anthropic-ai/claude-code@2.1.237
+# Install Claude Code globally (available to all users via /usr/local/bin).
+# Unpinned so 'claude-pod --rebuild' always pulls whatever is currently
+# published, including support for newly released models.
+RUN npm install -g @anthropic-ai/claude-code@latest
 
 # Create the sandbox user.
 # UID 1000 is the most common first-user UID on Linux.
@@ -91,8 +93,15 @@ ENV SDL_VIDEODRIVER=x11
 
 # User-level Claude Code context: informs claude about the container's constraints
 # so it doesn't need to re-discover them (sudo scope, npm prefix, ephemeral fs, etc.)
-RUN mkdir -p /home/sandbox/.claude
+RUN mkdir -p /home/sandbox/.claude/agents
 COPY container-claude.md /home/sandbox/.claude/CLAUDE.md
+
+# Default agent-orchestration setup: a debugger agent for bugs that survive two
+# fix attempts, and an architect agent for design-level problems and anything
+# with subtle geometry/numerics/concurrency invariants. The escalation rules
+# that route to them live in container-claude.md.
+COPY agents/debugger.md /home/sandbox/.claude/agents/debugger.md
+COPY agents/architect.md /home/sandbox/.claude/agents/architect.md
 
 # Pre-configure Claude Code for the container: allow all tools and enable
 # dangerously-skip-permissions by default so 'cla' starts without consent prompts.

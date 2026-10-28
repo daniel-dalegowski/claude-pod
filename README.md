@@ -31,6 +31,7 @@ Use this for convenience and accidental-damage prevention when working with a tr
 - Debian (trixie) base — standard FHS, so a project's own install docs just work
 - `bash`, `git`, `curl`, `build-essential`, Node.js LTS, Claude Code (`claude`)
 - `cla` alias for `claude --dangerously-skip-permissions`
+- Default agent-orchestration setup: a `debugger` subagent (for bugs that survive two fix attempts) and an `architect` subagent (for design-level problems and geometry/numerics/concurrency work), wired up via an Escalation section in `~/.claude/CLAUDE.md`
 - Passwordless `sudo` scoped to `apt-get`/`apt`/`dpkg` only; `/usr/local` is owned by the sandbox user so `pip install`, `gem install`, `make install`, curl-based installers, etc. work without sudo
 - Wayland + X11/XWayland passthrough, GPU (`/dev/dri`), audio (PulseAudio/PipeWire), D-Bus
 - `xdg-open` wired through D-Bus so OAuth flows open in your host browser
@@ -48,13 +49,19 @@ Use this for convenience and accidental-damage prevention when working with a tr
 
 ### Via Nix flake (recommended on NixOS)
 
-Add to `home.packages` in your home-manager config:
+Add the flake input, import the Home Manager module, and enable it:
 
 ```nix
 inputs.claude-pod.url = "path:/home/daniel/Documents/claude-pod";
-
-home.packages = [ inputs.claude-pod.packages.${system}.default ];
 ```
+
+```nix
+imports = [ inputs.claude-pod.homeModules.default ];
+
+programs.claude-pod.enable = true;
+```
+
+`programs.claude-pod.package` can be set to override the package if needed (e.g. to pin a fork), but defaults to the flake's own build.
 
 Or run without installing:
 
@@ -64,7 +71,7 @@ nix run /home/daniel/Documents/claude-pod
 
 ### Manual
 
-Copy `claude-pod` anywhere on your `$PATH`. The `Containerfile` and supporting files (`container-xdg-open`, `container-claude.md`) must live in the same directory as the script so `podman build` can find them.
+Copy `claude-pod` anywhere on your `$PATH`. The `Containerfile` and supporting files (`container-xdg-open`, `container-claude.md`, `VERSION`, `agents/debugger.md`, `agents/architect.md`) must live in the same directory as the script so `podman build` can find them.
 
 ## Usage
 
@@ -93,6 +100,9 @@ claude-pod --prune
 
 # Rebuild the base image (e.g. after Claude Code updates)
 claude-pod --rebuild
+
+# Print the claude-pod version
+claude-pod --version
 
 # Refresh DNS inside a long-running container after switching networks
 # (wifi <-> mobile hotspot, VPN toggling, etc.) — containers use --network=host

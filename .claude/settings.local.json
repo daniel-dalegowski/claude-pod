@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(chmod +x *)",
-      "Bash(bash -n /home/daniel/Documents/AgenticSandbox/claude-pod)",
-      "Bash(/home/daniel/Documents/AgenticSandbox/claude-pod *)"
-    ]
-  }
-}

@@ -14,7 +14,7 @@
     in {
       default = pkgs.stdenv.mkDerivation {
         pname = "claude-pod";
-        version = "0.1.0";
+        version = pkgs.lib.fileContents ./VERSION;
         src = ./.;
 
         dontConfigure = true;
@@ -27,6 +27,9 @@
           install -Dm644 Containerfile       "$datadir/Containerfile"
           install -Dm644 container-xdg-open  "$datadir/container-xdg-open"
           install -Dm644 container-claude.md "$datadir/container-claude.md"
+          install -Dm644 VERSION             "$datadir/VERSION"
+          install -Dm644 agents/debugger.md  "$datadir/agents/debugger.md"
+          install -Dm644 agents/architect.md "$datadir/agents/architect.md"
 
           install -Dm755 claude-pod "$out/bin/claude-pod"
           # Replace the runtime self-location with the fixed Nix store path so
@@ -50,5 +53,11 @@
         program = "${self.packages.${system}.default}/bin/claude-pod";
       };
     });
+
+    # Home Manager module — lets a home.nix enable claude-pod declaratively:
+    #   programs.claude-pod.enable = true;
+    # instead of manually adding the flake's package output to home.packages.
+    homeModules.default = import ./nix/module.nix { inherit self; };
+    homeManagerModules.default = self.homeModules.default;
   };
 }
