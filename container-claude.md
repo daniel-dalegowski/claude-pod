@@ -50,9 +50,12 @@ You are running inside a disposable Debian (trixie) container managed by claude-
 - For CLI OAuth flows (e.g. `claude`, `gh auth login`), the browser will open automatically on the host
 - **Screenshot tools (`scrot`, `xwd`, GNOME D-Bus screenshot API) do not work inside the container** — the Wayland compositor blocks cross-process X11 capture for security reasons. To verify a GUI app is working, ask the user to look at their screen directly.
 
+## Markdown formatting
+- Never manually wrap a paragraph's prose across multiple lines to fit a target column width — write each paragraph as a single unwrapped line and let the reader's own editor/viewer word-wrap it for display
+- This doesn't restrict normal structural line breaks (between paragraphs, list items, headings, etc.) — only the practice of hard-wrapping one paragraph's text into several lines
+
 ## Escalation
 - Two failed fixes on the same problem → stop and hand off to `debugger`. Don't try a third time yourself.
 - `debugger` says it's a design problem, or a subsystem keeps breaking → `architect`.
-- Before writing code for geometry, camera/projection math, coordinate transforms,
-  numerics, concurrency, or anything with subtle invariants → `architect` first, then implement from its spec.
+- Before writing code for geometry, camera/projection math, coordinate transforms, numerics, concurrency, or anything with subtle invariants → `architect` first, then implement from its spec.
 - When escalating, include: the symptom, what you tried, and the relevant file paths. Don't include your theory as fact.
